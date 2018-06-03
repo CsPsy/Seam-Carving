@@ -3,13 +3,15 @@ import numpy as np
 from skimage.filters.rank import entropy
 import cv2 as cv
 from tqdm import tqdm
-from grad_cam import *
+#from grad_cam import *
+from guided_grad_cam import (grad_cam, guided_backprop, preprocess_image,
+                             guided_grad_cam, convert_to_grayscale)
 
 ENTROPY_SELEM = np.ones((9,9), dtype=np.uint8)
 KERNEL = np.array([[1,1,1], [1,-8,1], [1,1,1]])
 ENTROPY_WEIGHT = 2
 FORWARD_WEIGHT = 1
-CAM_WEIGHT = 20
+CAM_WEIGHT = 1
 
 def valid(i,j,h,w):
     #given the height and width of a picture, verify if (i,j) is valid
@@ -46,7 +48,6 @@ def min_from_three(mode, img, array, i, j, h, w):
     idx = np.argmin(ls)
     return j + idx - 1, ls[idx]
 
-
 def get_range(i, j, h, w):
     # return left-top, right-bottom and nr_pixels of patch of pixel (i,j)
     if i > 0 and i < h-1 and j > 0 and j < w-1:
@@ -80,7 +81,6 @@ def energy_of_element_with_abs(imgarr,i,j,height,width):
     energy = np.sum(np.abs(patch - imgarr[i][j])) / (3 * nr_pixels)
     return energy
 
-
 def compute_energy_function_with_abs(imgarr, mode=0):
     # return energy over whole img, with abs according to the instruction
     imgarr = imgarr.astype(float)
@@ -97,14 +97,23 @@ def compute_energy_function_with_abs(imgarr, mode=0):
 
     return enrg
 
-def compute_gradcam_enrg(imgarr,grad_cam):
+def compute_saliency_map(imgarr):
     #return the enrg for part 3
 
+    prep_img = preprocess_image(imgarr)
+    cam, target_class = grad_cam.generate_cam(prep_img)
+    guided_grads = guided_backprop.generate_gradients(prep_img, target_class)
+    cam_gb = guided_grad_cam(cam, guided_grads)
+    cam_gb = convert_to_grayscale(cam_gb)
+    cam_gb = cam_gb / (np.max(cam_gb) - np.min(cam_gb)) * 255
+    cam_gb = cv.resize(cam_gb.reshape(224, 224), (imgarr.shape[1], imgarr.shape[0]))
+    '''
     prep_img = preprocess_image(imgarr)
     enrg = grad_cam.generate_cam(prep_img)
     enrg = cv.resize(enrg, (imgarr.shape[1], imgarr.shape[0]))
     enrg = (enrg / (np.max(enrg) - np.min(enrg)))
-    return enrg
+    '''
+    return cam_gb
 
 def get_vertical_seam(mode,img,enrg):
     # get a vertical seam by dynamic programming
@@ -164,9 +173,10 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
     if width >= newwidth:
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(img, mode)
+            enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
                 assert grad_cam is not None
-                enrg += CAM_WEIGHT * compute_gradcam_enrg(img, grad_cam)
+                enrg += CAM_WEIGHT * compute_saliency_map(img)
             seam = get_vertical_seam(mode, img, enrg)
             img = delete_seam(seam, img)
     else:
@@ -174,9 +184,10 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
         seam_stack = []
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(tmp_img, mode)
+            enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
                 assert grad_cam is not None
-                enrg += CAM_WEIGHT * compute_gradcam_enrg(tmp_img, grad_cam)
+                enrg += CAM_WEIGHT * compute_saliency_map(tmp_img)
             seam = get_vertical_seam(mode, tmp_img, enrg)
             tmp_img = delete_seam(seam, tmp_img)
             # reset the position of current seam
@@ -211,7 +222,8 @@ def visualize_energy_map(grad_cam,imgarr, filepath, mode=0, opt=True):
         enrg = compute_energy_function_by_con(imgarr, mode)
     if mode == 3:
         assert grad_cam is not None
-        enrg += CAM_WEIGHT*compute_gradcam_enrg(imgarr, grad_cam)
+        enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
+        enrg += CAM_WEIGHT*compute_saliency_map(imgarr)
     enrg = enrg / (np.max(enrg) - np.min(enrg))
     enrg = enrg * 255
     enrg_heatmap = cv.applyColorMap(enrg, cv.COLORMAP_JET)
@@ -321,8 +333,7 @@ def compute_energy_function_by_con(imgarr, mode=0):
         enrg[height-1][j] = enrg[height-1][j] * 8 / 5
 
     enrg /= 3 * 8
-
-    ent = entropy(gray_scale_image(imgarr), ENTROPY_SELEM)
-    enrg = enrg + ENTROPY_WEIGHT*ent
-
+    if mode == 1:
+        ent = entropy(gray_scale_image(imgarr), ENTROPY_SELEM)
+        enrg = enrg + ENTROPY_WEIGHT*ent
     return enrg

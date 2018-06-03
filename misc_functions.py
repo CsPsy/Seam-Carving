@@ -31,7 +31,7 @@ def convert_to_grayscale(cv2im):
     return grayscale_im
 
 
-def save_gradient_images(gradient, file_name):
+def save_gradient_images(gradient, file_name, shape=None):
     """
         Exports the original gradient image
 
@@ -39,15 +39,14 @@ def save_gradient_images(gradient, file_name):
         gradient (np arr): Numpy array of the gradient with shape (3, 224, 224)
         file_name (str): File name to be exported
     """
-    if not os.path.exists('../results'):
-        os.makedirs('../results')
     gradient = gradient - gradient.min()
     gradient /= gradient.max()
     gradient = np.uint8(gradient * 255).transpose(1, 2, 0)
-    path_to_file = os.path.join('../results', file_name + '.jpg')
     # Convert RBG to GBR
     gradient = gradient[..., ::-1]
-    cv2.imwrite(path_to_file, gradient)
+    if shape:
+        gradient = cv2.resize(gradient, shape)
+    cv2.imwrite(file_name, gradient)
 
 
 def save_class_activation_on_image(org_img, activation_map, file_name):

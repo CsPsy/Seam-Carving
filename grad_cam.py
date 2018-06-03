@@ -83,7 +83,7 @@ class GradCam():
         cam = np.maximum(cam, 0)
         cam = (cam - np.min(cam)) / (np.max(cam) - np.min(cam))  # Normalize between 0-1
         cam = np.uint8(cam * 255)  # Scale between 0-255 to visualize
-        return cam
+        return cam, target_class
 
 
 if __name__ == '__main__':
@@ -98,7 +98,8 @@ if __name__ == '__main__':
     # Grad cam
     grad_cam = GradCam(pretrained_model, target_layer=42)
     # Generate cam mask
-    cam = grad_cam.generate_cam(prep_img)
+    cam, _ = grad_cam.generate_cam(prep_img)
     # Save mask
-    save_class_activation_on_image(original_image, cam, out_path)
+    cv2.imwrite(out_path, cam)
+    #save_class_activation_on_image(original_image, cam, out_path)
     print('Grad cam completed')
