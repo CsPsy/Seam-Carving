@@ -1,5 +1,7 @@
+# seam_main.py - the main code file to run
+
+from PIL import Image
 from seam_operates import *
-from grad_cam import *
 import time
 import sys
 
@@ -17,18 +19,13 @@ def main():
     img = np.asarray(img, dtype=np.double)
 
     assert img.shape[2] == 3
-    if energy_type == 3:
-        pretrained_model = torchvision.models.vgg16_bn(pretrained=True)
-        grad_cam = GradCam(pretrained_model, target_layer=42)
-    else:
-        grad_cam = None
 
     if energy_type == 3:
-        visualize_energy_map(grad_cam, img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
-        img = verti_op_pic(img, out_width, energy_type, grad_cam)
-        img = hori_op_pic(img, out_height, energy_type, grad_cam)
+        #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
+        img = verti_op_pic(img, out_width, energy_type)
+        img = hori_op_pic(img, out_height, energy_type)
     else:
-        visualize_energy_map(grad_cam, img, out_path + 'enegy_map.png', mode=energy_type, opt = True)
+        #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = True)
         img = verti_op_pic_with_opt(img, out_width,energy_type)
         img = hori_op_pic_with_opt(img, out_height,energy_type)
 
