@@ -1,26 +1,30 @@
-from PIL import Image
+# seam_operates.py - the functions for operating
+
 import numpy as np
 from skimage.filters.rank import entropy
 import cv2 as cv
+import torchvision
 from tqdm import tqdm
-#from grad_cam import *
-from guided_grad_cam import (grad_cam, guided_backprop, preprocess_image,
-                             guided_grad_cam, convert_to_grayscale)
+from guided_grad_cam import *
 
-ENTROPY_SELEM = np.ones((9,9), dtype=np.uint8)
-KERNEL = np.array([[1,1,1], [1,-8,1], [1,1,1]])
+# Global Variables
 ENTROPY_WEIGHT = 2
 FORWARD_WEIGHT = 1
-CAM_WEIGHT = 1
+CAM_WEIGHT = 1.5
+ENTROPY_SELEM = np.ones((9,9), dtype=np.uint8)
+KERNEL = np.array([[1,1,1], [1,-8,1], [1,1,1]])
+pretrained_model = torchvision.models.vgg16(pretrained=True)
+grad_cam = GradCam(pretrained_model, target_layer=30)
+guided_backprop = GuidedBackprop(pretrained_model)
 
 def valid(i,j,h,w):
-    #given the height and width of a picture, verify if (i,j) is valid
+    # Given the height and width of a picture, verify if (i,j) is valid
     if i < 0 or i >= h or j < 0 or j >= w:
         return False
     return True
 
 def min_from_three(mode, img, array, i, j, h, w):
-    #get the min energy among (i-1,j-1), (i-1,j) and (i-1,j+1)
+    # Given the dynamic map, get the min energy among (i-1,j-1), (i-1,j) and (i-1,j+1)
     a = float('inf')
     if valid(i-1,j-1,h,w):
         a = array[i-1][j-1]
@@ -31,8 +35,8 @@ def min_from_three(mode, img, array, i, j, h, w):
     if valid(i-1,j+1,h,w):
         c = array[i-1][j+1]
 
-    #add forward energy
-    #caution: if we want to add forward energy in other mode, modify here
+    # Add forward energy
+    # caution: if we want to add forward energy in other mode, modify here
     if mode == 2:
         if valid(i,j+1,h,w) and valid(i,j-1,h,w):
             tmp = np.sum(np.abs(img[i][j+1] - img[i][j-1])) / 3
@@ -49,7 +53,7 @@ def min_from_three(mode, img, array, i, j, h, w):
     return j + idx - 1, ls[idx]
 
 def get_range(i, j, h, w):
-    # return left-top, right-bottom and nr_pixels of patch of pixel (i,j)
+    # Given the height and width of a picture, return left-top, right-bottom and nr_pixels of patch of pixel (i,j)
     if i > 0 and i < h-1 and j > 0 and j < w-1:
         return (-1,-1), (1,1), 8
     if i == 0 and j == 0:
@@ -70,19 +74,19 @@ def get_range(i, j, h, w):
         return (-1,-1), (1,0), 5
 
 def gray_scale_image(img):
-    #turn a rgb img to gray
+    # Convert a rgb img to gray scale
     grayimg = 0.30*img[:, :, 0] + 0.59*img[:, :, 1] + 0.11*img[:, :, 2]
     return grayimg.astype(np.uint8)
 
 def energy_of_element_with_abs(imgarr,i,j,height,width):
-    # return basic energy of pixel (i,j)
+    # Given an image, return basic energy of pixel (i,j)
     left_top, right_bottom, nr_pixels = get_range(i, j, height, width)
     patch = imgarr[i+left_top[0]:i+right_bottom[0] + 1, j+left_top[1]:j+right_bottom[1] + 1, :]
     energy = np.sum(np.abs(patch - imgarr[i][j])) / (3 * nr_pixels)
     return energy
 
 def compute_energy_function_with_abs(imgarr, mode=0):
-    # return energy over whole img, with abs according to the instruction
+    # Given an image, return the energy map over whole image, with abs according to the instruction
     imgarr = imgarr.astype(float)
     height, width, channels = imgarr.shape
 
@@ -97,26 +101,8 @@ def compute_energy_function_with_abs(imgarr, mode=0):
 
     return enrg
 
-def compute_saliency_map(imgarr):
-    #return the enrg for part 3
-
-    prep_img = preprocess_image(imgarr)
-    cam, target_class = grad_cam.generate_cam(prep_img)
-    guided_grads = guided_backprop.generate_gradients(prep_img, target_class)
-    cam_gb = guided_grad_cam(cam, guided_grads)
-    cam_gb = convert_to_grayscale(cam_gb)
-    cam_gb = cam_gb / (np.max(cam_gb) - np.min(cam_gb)) * 255
-    cam_gb = cv.resize(cam_gb.reshape(224, 224), (imgarr.shape[1], imgarr.shape[0]))
-    '''
-    prep_img = preprocess_image(imgarr)
-    enrg = grad_cam.generate_cam(prep_img)
-    enrg = cv.resize(enrg, (imgarr.shape[1], imgarr.shape[0]))
-    enrg = (enrg / (np.max(enrg) - np.min(enrg)))
-    '''
-    return cam_gb
-
 def get_vertical_seam(mode,img,enrg):
-    # get a vertical seam by dynamic programming
+    # Given the energy map, get a vertical seam by dynamic programming
     height,width = enrg.shape
     dp = np.zeros_like(enrg)
     B = np.zeros_like(enrg,dtype = np.int64)
@@ -141,7 +127,7 @@ def get_vertical_seam(mode,img,enrg):
     return seam
 
 def delete_seam(seam, imgarr):
-    # delete a seam on a img
+    # Delete a seam on a image
     height, width, colors = imgarr.shape
     img = np.zeros((height, width - 1, colors), dtype=np.int64)
     for i, j in enumerate(seam):
@@ -150,13 +136,22 @@ def delete_seam(seam, imgarr):
             img[i][j:] = imgarr[i][j + 1:]
     return img
 
+def delete_map_seam(seam, maparr):
+    # Delete a seam on energy map
+    height, width = maparr.shape
+    img = np.zeros((height, width - 1), dtype=np.int64)
+    for i, j in enumerate(seam):
+        img[i][:j] = maparr[i][:j]
+        if j + 1 < width:
+            img[i][j:] = maparr[i][j + 1:]
+    return img
+
 def add_seam(seam, imgarr):
-    #add a seam on a img
+    # Add a seam on a image
     height, width, colors = imgarr.shape
     img = np.zeros((height, width + 1, colors), dtype=np.int64)
     for i, j in enumerate(seam):
         img[i][:j] = imgarr[i][:j]
-        # add new column
         if j == 0:
             img[i][j] = np.mean(imgarr[i, j:j + 3], axis=0)
         elif j == width - 1:
@@ -167,29 +162,38 @@ def add_seam(seam, imgarr):
     return img
 
 def verti_op_pic(img,newwidth,mode,grad_cam=None):
-    #do vertical operations on a image
+    # Do vertical operations on a image
     height,width,colors = img.shape
     verti_seams = abs(width - newwidth)
     if width >= newwidth:
+        if mode == 3:
+            smap = compute_saliency_map(img)
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
-                assert grad_cam is not None
-                enrg += CAM_WEIGHT * compute_saliency_map(img)
+                smap = compute_saliency_map(img) #recompute or not
+                enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, img, enrg)
             img = delete_seam(seam, img)
+            if mode == 3:
+                smap = delete_map_seam(seam,smap)
     else:
         tmp_img = np.copy(img)
         seam_stack = []
+        if mode == 3:
+            smap = compute_saliency_map(tmp_img)
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(tmp_img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
-                assert grad_cam is not None
-                enrg += CAM_WEIGHT * compute_saliency_map(tmp_img)
+                smap = compute_saliency_map(tmp_img) #recompute or not
+                enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, tmp_img, enrg)
             tmp_img = delete_seam(seam, tmp_img)
+            if mode == 3:
+                smap = delete_map_seam(seam,smap)
+
             # reset the position of current seam
             if i > 0:
                 pre_seam = seam_stack[-1]
@@ -206,41 +210,30 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
     return img
 
 def hori_op_pic(img,newheight,mode,grad_cam=None):
-    #do horizontal operations on a image
-    height,width,colors = img.shape
+    # Do horizontal operations on a image
     img = np.array(img,dtype = np.double)
     img = img.transpose((1,0,2))
     img = verti_op_pic(img, newheight, mode, grad_cam)
     img = img.transpose((1,0,2))
     return img
 
-def visualize_energy_map(grad_cam,imgarr, filepath, mode=0, opt=True):
-    #visualize the energy map
+def visualize_energy_map(imgarr, filepath, mode=0, opt=True):
+    # Visualize the energy map
     if opt == True:
         enrg = compute_energy_function_with_abs(imgarr, mode)
     else:
         enrg = compute_energy_function_by_con(imgarr, mode)
     if mode == 3:
-        assert grad_cam is not None
         enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
-        enrg += CAM_WEIGHT*compute_saliency_map(imgarr)
+        smap = compute_saliency_map(imgarr)
+        enrg += CAM_WEIGHT*smap
     enrg = enrg / (np.max(enrg) - np.min(enrg))
     enrg = enrg * 255
     enrg_heatmap = cv.applyColorMap(enrg, cv.COLORMAP_JET)
     cv.imwrite(filepath, enrg_heatmap)
 
-
-def show_image(imgarr):
-    #show a img or a mask from array
-    img = Image.fromarray(np.uint8(imgarr))
-    img.show()
-    #plt.imshow(imgarr,cmap ='gray')
-    #plt.show()
-    return
-
-
 def delete_seam_with_opt(mode,seam,imgarr,enrg):
-    # delete or add a seam and update the energy map instead of computing the whole energy map every time
+    # Delete or add a seam and update the energy map instead of computing the whole energy map every time
     height, width, colors = imgarr.shape
     img = np.zeros((height, width - 1, colors), dtype=np.int64)
     newenrg = np.zeros((height, width - 1), dtype=np.double)
@@ -272,7 +265,7 @@ def delete_seam_with_opt(mode,seam,imgarr,enrg):
 
 
 def verti_op_pic_with_opt(img,newwidth,mode):
-    #the verti_op_pic function for the optimization of delete_seam
+    # Revised verti_op_pic function for the optimization
     height,width,colors = img.shape
     verti_seams = abs(width - newwidth)
     if width >= newwidth:
@@ -304,14 +297,26 @@ def verti_op_pic_with_opt(img,newwidth,mode):
 
 
 def hori_op_pic_with_opt(img,newheight,mode):
+    # Revised hori_op_pic function for the optimization
     img = np.array(img,dtype = np.double)
     img = img.transpose((1,0,2))
     img = verti_op_pic_with_opt(img, newheight, mode)
     img = img.transpose((1,0,2))
     return img
 
+def compute_saliency_map(imgarr):
+    # Given an image, return the guided grad-CAM energy for mode 3
+    prep_img = preprocess_image(imgarr)
+    cam, target_class = grad_cam.generate_cam(prep_img)
+    guided_grads = guided_backprop.generate_gradients(prep_img, target_class)
+    cam_gb = guided_grad_cam(cam, guided_grads)
+    cam_gb = convert_to_grayscale(cam_gb)
+    cam_gb = cam_gb / (np.max(cam_gb) - np.min(cam_gb)) * 255
+    cam_gb = cv2.resize(cam_gb.reshape(224, 224), (imgarr.shape[1], imgarr.shape[0]))
+    return cam_gb
+
 def compute_energy_function_by_con(imgarr, mode=0):
-    # return energy over whole img
+    # Return energy computed by convolutional operations over whole img
     imgarr = imgarr.astype(float)
     height, width, channels = imgarr.shape
 
