@@ -3,8 +3,8 @@
 from PIL import Image
 from seam_operates import *
 import time
-import sys
 import argparse
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -23,11 +23,11 @@ def main():
     assert img.shape[2] == 3
 
     if args.energy_type == 3:
-        #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
+        # visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
         img = verti_op_pic(img, args.out_width, args.energy_type)
         img = hori_op_pic(img, args.out_height, args.energy_type)
     else:
-        #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = True)
+        # visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = True)
         img = verti_op_pic_with_opt(img, args.out_width, args.energy_type)
         img = hori_op_pic_with_opt(img, args.out_height, args.energy_type)
 
@@ -37,6 +37,6 @@ def main():
     print('Whole process takes {} m {} s'.format(total_time // 60, total_time % 60))
     return
 
+
 if __name__ == '__main__':
     main()
-
