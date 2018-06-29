@@ -13,10 +13,21 @@ FORWARD_WEIGHT = 1
 CAM_WEIGHT = 1.5
 ENTROPY_SELEM = np.ones((9, 9), dtype=np.uint8)
 KERNEL = np.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]])
-pretrained_model = torchvision.models.vgg16(pretrained=True)
-grad_cam = GradCam(pretrained_model, target_layer=30)
-guided_backprop = GuidedBackprop(pretrained_model)
 
+
+pretrained_model = None #torchvision.models.vgg11(pretrained=True)
+grad_cam = None #GradCam(pretrained_model, target_layer=30)
+guided_backprop = None  #GuidedBackprop(pretrained_model)
+
+def set_ggcam():
+    """
+    get deep learning model for mode 3
+    :return:
+    """
+    global pretrained_model, grad_cam, guided_backprop
+    pretrained_model = torchvision.models.vgg16(pretrained=True)
+    grad_cam = GradCam(pretrained_model, target_layer=30)
+    guided_backprop = GuidedBackprop(pretrained_model)
 
 def valid(i, j, h, w):
     """

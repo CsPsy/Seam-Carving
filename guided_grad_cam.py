@@ -2,6 +2,7 @@
 # modified based on https://github.com/utkuozbulak/pytorch-cnn-visualizations
 
 import numpy as np
+import torchvision
 import cv2
 import torch
 

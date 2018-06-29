@@ -2,6 +2,7 @@
 
 from PIL import Image
 from seam_operates import *
+from guided_grad_cam import *
 import time
 import argparse
 
@@ -28,6 +29,7 @@ def main():
 
     if args.energy_type == 3:
         # visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
+        set_ggcam()
         img = verti_op_pic(img, args.out_width, args.energy_type, args.speedup)
         img = hori_op_pic(img, args.out_height, args.energy_type, args.speedup)
     else:
