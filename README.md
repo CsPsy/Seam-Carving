@@ -6,6 +6,7 @@ In this project, we implemented the system of seam carving, a algorithm for cont
 # RUN
 - You can run `sh run.sh` directly a simple test
 - Or you can use command `python3 seam_main.py <input image path> <new width> <new height> <mode> <output image path>`
+
 mode 0: basic energy
 mode 1: +local entropy
 mode 2: +forward energy
