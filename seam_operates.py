@@ -234,7 +234,7 @@ def add_seam(seam, imgarr):
     return img
 
 
-def verti_op_pic(img, newwidth, mode):
+def verti_op_pic(img, newwidth, mode, speedup=True):
     """
     :param img: the original image
     :param newwidth: the new width expected for the output
@@ -246,33 +246,29 @@ def verti_op_pic(img, newwidth, mode):
     verti_seams = abs(width - newwidth)
     smap = None
     if width >= newwidth:
-        if mode == 3:
-            smap = compute_saliency_map(img)
+        smap = compute_saliency_map(img)
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
-            if mode == 3:
+            if speedup == False:
                 smap = compute_saliency_map(img)  # recompute or not
-                enrg += CAM_WEIGHT * smap
+            enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, img, enrg)
             img = delete_seam(seam, img)
-            if mode == 3:
-                smap = delete_map_seam(seam, smap)
+            smap = delete_map_seam(seam, smap)
     else:
         tmp_img = np.copy(img)
         seam_stack = []
-        if mode == 3:
-            smap = compute_saliency_map(tmp_img)
+        smap = compute_saliency_map(tmp_img)
         for i in tqdm(range(verti_seams)):
             enrg = compute_energy_function_by_con(tmp_img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
-            if mode == 3:
+            if speedup == False:
                 smap = compute_saliency_map(tmp_img)  # recompute or not
-                enrg += CAM_WEIGHT * smap
+            enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, tmp_img, enrg)
             tmp_img = delete_seam(seam, tmp_img)
-            if mode == 3:
-                smap = delete_map_seam(seam, smap)
+            smap = delete_map_seam(seam, smap)
 
             # reset the position of current seam
             if i > 0:
@@ -290,7 +286,7 @@ def verti_op_pic(img, newwidth, mode):
     return img
 
 
-def hori_op_pic(img, newheight, mode):
+def hori_op_pic(img, newheight, mode, speedup=True):
     """
     :param img: the original image
     :param newheight: the new height expected for the output
@@ -301,7 +297,7 @@ def hori_op_pic(img, newheight, mode):
     # Do horizontal operations on a image
     img = np.array(img, dtype=np.double)
     img = img.transpose((1, 0, 2))
-    img = verti_op_pic(img, newheight, mode)
+    img = verti_op_pic(img, newheight, mode, speedup=speedup)
     img = img.transpose((1, 0, 2))
     return img
 
