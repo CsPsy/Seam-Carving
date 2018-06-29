@@ -4,33 +4,35 @@ from PIL import Image
 from seam_operates import *
 import time
 import sys
-
+import argparse
 
 def main():
-    img_path = sys.argv[1]
-    out_width = int(sys.argv[2])
-    out_height = int(sys.argv[3])
-    energy_type = int(sys.argv[4])
-    if energy_type > 3:
-        energy_type = 3
-    out_path = sys.argv[5]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('img_path', help='input image path')
+    parser.add_argument('out_width', help="output image's width", type=int)
+    parser.add_argument('out_height', help="output image's height", type=int)
+    parser.add_argument('energy_type', help="the energy_type you want to use",
+                        type=int, choices=[0, 1, 2, 3])
+    parser.add_argument('out_path', help='output image path')
+    args = parser.parse_args()
+
     since = time.time()
-    img = Image.open(img_path).convert('RGB')
+    img = Image.open(args.img_path).convert('RGB')
     img = np.asarray(img, dtype=np.double)
 
     assert img.shape[2] == 3
 
-    if energy_type == 3:
+    if args.energy_type == 3:
         #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = False)
-        img = verti_op_pic(img, out_width, energy_type)
-        img = hori_op_pic(img, out_height, energy_type)
+        img = verti_op_pic(img, args.out_width, args.energy_type)
+        img = hori_op_pic(img, args.out_height, args.energy_type)
     else:
         #visualize_energy_map(img, out_path + 'enegy_map.png', mode=energy_type, opt = True)
-        img = verti_op_pic_with_opt(img, out_width,energy_type)
-        img = hori_op_pic_with_opt(img, out_height,energy_type)
+        img = verti_op_pic_with_opt(img, args.out_width, args.energy_type)
+        img = hori_op_pic_with_opt(img, args.out_height, args.energy_type)
 
     img = Image.fromarray(np.uint8(img))
-    img.save(out_path)
+    img.save(args.out_path)
     total_time = time.time() - since
     print('Whole process takes {} m {} s'.format(total_time // 60, total_time % 60))
     return
