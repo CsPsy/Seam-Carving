@@ -8,92 +8,139 @@ from tqdm import tqdm
 from guided_grad_cam import *
 
 # Global Variables
-ENTROPY_WEIGHT = 2
+ENTROPY_WEIGHT = 5
 FORWARD_WEIGHT = 1
 CAM_WEIGHT = 1.5
-ENTROPY_SELEM = np.ones((9,9), dtype=np.uint8)
-KERNEL = np.array([[1,1,1], [1,-8,1], [1,1,1]])
+ENTROPY_SELEM = np.ones((9, 9), dtype=np.uint8)
+KERNEL = np.array([[1, 1, 1], [1, -8, 1], [1, 1, 1]])
 pretrained_model = torchvision.models.vgg16(pretrained=True)
 grad_cam = GradCam(pretrained_model, target_layer=30)
 guided_backprop = GuidedBackprop(pretrained_model)
 
-def valid(i,j,h,w):
-    # Given the height and width of a picture, verify if (i,j) is valid
+
+def valid(i, j, h, w):
+    """
+    :param i: the row coordinate of the pixel
+    :param j: the column coordinate of the pixel
+    :param h: the height of the image
+    :param w: the width of the image
+    :return: whether (i,j) is in the image
+    """
+
     if i < 0 or i >= h or j < 0 or j >= w:
         return False
     return True
 
+
 def min_from_three(mode, img, array, i, j, h, w):
-    # Given the dynamic map, get the min energy among (i-1,j-1), (i-1,j) and (i-1,j+1)
+    """
+    :param mode: the mode of energy
+    :param img: the original image
+    :param array: the dynamic map
+    :param i: the row coordinate of the pixel
+    :param j: the column coordinate of the pixel
+    :param h: the height of the image
+    :param w: the width of the image
+    :return: the min energy among (i-1,j-1), (i-1,j) and (i-1,j+1)
+    """
+
     a = float('inf')
-    if valid(i-1,j-1,h,w):
+    if valid(i-1, j-1, h, w):
         a = array[i-1][j-1]
     b = float('inf')
-    if valid(i-1,j,h,w):
+    if valid(i-1, j, h, w):
         b = array[i-1][j]
     c = float('inf')
-    if valid(i-1,j+1,h,w):
+    if valid(i-1, j+1, h, w):
         c = array[i-1][j+1]
 
     # Add forward energy
     # caution: if we want to add forward energy in other mode, modify here
     if mode == 2:
-        if valid(i,j+1,h,w) and valid(i,j-1,h,w):
+        if valid(i, j+1, h, w) and valid(i, j-1, h, w):
             tmp = np.sum(np.abs(img[i][j+1] - img[i][j-1])) / 3
             a += FORWARD_WEIGHT * tmp
             b += FORWARD_WEIGHT * tmp
             c += FORWARD_WEIGHT * tmp
-        if valid(i-1,j,h,w) and valid(i,j-1,h,w):
+        if valid(i-1, j, h, w) and valid(i, j-1, h, w):
             a += FORWARD_WEIGHT * np.sum(np.abs(img[i-1][j] - img[i][j-1])) / 3
-        if valid(i-1,j,h,w) and valid(i,j+1,h,w):
+        if valid(i-1, j, h, w) and valid(i, j+1, h, w):
             c += FORWARD_WEIGHT * np.sum(np.abs(img[i-1][j] - img[i][j+1])) / 3
 
     ls = np.array([a, b, c])
     idx = np.argmin(ls)
     return j + idx - 1, ls[idx]
 
+
 def get_range(i, j, h, w):
-    # Given the height and width of a picture, return left-top, right-bottom and nr_pixels of patch of pixel (i,j)
-    if i > 0 and i < h-1 and j > 0 and j < w-1:
-        return (-1,-1), (1,1), 8
+    """
+    :param i: the row coordinate of the pixel
+    :param j: the column coordinate of the pixel
+    :param h: the height of the image
+    :param w: the width of the image
+    :return: the left-top, right-bottom and nr_pixels of patch of pixel (i,j)
+    """
+
+    if 0 < i < h-1 and 0 < j < w-1:
+        return (-1, -1), (1, 1), 8
     if i == 0 and j == 0:
-        return (0,0), (1,1), 3
+        return (0, 0), (1, 1), 3
     if i == 0 and j == w-1:
-        return (0,-1), (1,0), 3
+        return (0, -1), (1, 0), 3
     if i == h-1 and j == 0:
-        return (-1,0), (0,1), 3
+        return (-1, 0), (0, 1), 3
     if i == h-1 and j == w-1:
-        return (-1,-1), (0,0), 3
+        return (-1, -1), (0, 0), 3
     if i == 0:
-        return (0,-1), (1,1), 5
+        return (0, -1), (1, 1), 5
     if i == h-1:
-        return (-1,-1), (0,1), 5
+        return (-1, -1), (0, 1), 5
     if j == 0:
-        return (-1,0), (1,1), 5
+        return (-1, 0), (1, 1), 5
     if j == w-1:
-        return (-1,-1), (1,0), 5
+        return (-1, -1), (1, 0), 5
+
 
 def gray_scale_image(img):
-    # Convert a rgb img to gray scale
+    """
+    :param img: the original RGB image
+    :return: the gray scale image of img
+    """
+
     grayimg = 0.30*img[:, :, 0] + 0.59*img[:, :, 1] + 0.11*img[:, :, 2]
     return grayimg.astype(np.uint8)
 
-def energy_of_element_with_abs(imgarr,i,j,height,width):
-    # Given an image, return basic energy of pixel (i,j)
+
+def energy_of_element_with_abs(imgarr, i, j, height, width):
+    """
+    :param imgarr: the original image
+    :param i: the row coordinate of the pixel
+    :param j: the column coordinate of the pixel
+    :param height: the height of the image
+    :param width: the width of the image
+    :return: the basic energy of pixel (i,j)
+    """
+
     left_top, right_bottom, nr_pixels = get_range(i, j, height, width)
     patch = imgarr[i+left_top[0]:i+right_bottom[0] + 1, j+left_top[1]:j+right_bottom[1] + 1, :]
     energy = np.sum(np.abs(patch - imgarr[i][j])) / (3 * nr_pixels)
     return energy
 
+
 def compute_energy_function_with_abs(imgarr, mode=0):
-    # Given an image, return the energy map over whole image, with abs according to the instruction
+    """
+    :param imgarr: the original image
+    :param mode: the mode of energy
+    :return: the energy map over whole image, with abs according to the instruction
+    """
+
     imgarr = imgarr.astype(float)
     height, width, channels = imgarr.shape
 
-    enrg  = np.zeros((height,width),dtype=np.double)
+    enrg = np.zeros((height, width), dtype=np.double)
     for i in range(height):
         for j in range(width):
-            enrg[i][j] = energy_of_element_with_abs(imgarr,i,j,height,width)
+            enrg[i][j] = energy_of_element_with_abs(imgarr, i, j, height, width)
 
     if mode == 1:
         ent = entropy(gray_scale_image(imgarr), ENTROPY_SELEM)
@@ -101,33 +148,46 @@ def compute_energy_function_with_abs(imgarr, mode=0):
 
     return enrg
 
-def get_vertical_seam(mode,img,enrg):
-    # Given the energy map, get a vertical seam by dynamic programming
-    height,width = enrg.shape
+
+def get_vertical_seam(mode, img, enrg):
+    """
+    :param mode: the mode of energy
+    :param img: the original image
+    :param enrg: the energy map of the image
+    :return: a vertical seam with the lowest energy by dynamic programming
+    """
+
+    height, width = enrg.shape
     dp = np.zeros_like(enrg)
-    B = np.zeros_like(enrg,dtype = np.int64)
+    b = np.zeros_like(enrg, dtype=np.int64)
     for i in range(height):
         for j in range(width):
             dp[i][j] = enrg[i][j]
-            if i!=0:
-                B[i][j],M = min_from_three(mode,img,dp,i,j,height,width)
-                dp[i][j] += M
+            if i != 0:
+                b[i][j], m = min_from_three(mode, img, dp, i, j, height, width)
+                dp[i][j] += m
 
     # find the minimum vertical seam
     seam_b = np.argmin(dp[height - 1])
     # trace back to find the seam route
     seam = [seam_b]
 
-    for i in range(height-1,0,-1):
-        seam_b = B[i][seam_b]
+    for i in range(height-1, 0, -1):
+        seam_b = b[i][seam_b]
         seam += [seam_b]
 
     seam.reverse()
 
     return seam
 
+
 def delete_seam(seam, imgarr):
-    # Delete a seam on a image
+    """
+    :param seam: a seam on the image
+    :param imgarr: the original image
+    :return: the image after deleting the seam
+    """
+
     height, width, colors = imgarr.shape
     img = np.zeros((height, width - 1, colors), dtype=np.int64)
     for i, j in enumerate(seam):
@@ -136,8 +196,14 @@ def delete_seam(seam, imgarr):
             img[i][j:] = imgarr[i][j + 1:]
     return img
 
+
 def delete_map_seam(seam, maparr):
-    # Delete a seam on energy map
+    """
+    :param seam: a seam on the image
+    :param maparr: the energy map
+    :return: the energy map after deleting the seam
+    """
+
     height, width = maparr.shape
     img = np.zeros((height, width - 1), dtype=np.int64)
     for i, j in enumerate(seam):
@@ -146,8 +212,14 @@ def delete_map_seam(seam, maparr):
             img[i][j:] = maparr[i][j + 1:]
     return img
 
+
 def add_seam(seam, imgarr):
-    # Add a seam on a image
+    """
+    :param seam: a seam on the image
+    :param imgarr: the original image
+    :return: the image after adding the seam
+    """
+
     height, width, colors = imgarr.shape
     img = np.zeros((height, width + 1, colors), dtype=np.int64)
     for i, j in enumerate(seam):
@@ -161,10 +233,18 @@ def add_seam(seam, imgarr):
         img[i, j + 1:] = imgarr[i, j:]
     return img
 
-def verti_op_pic(img,newwidth,mode,grad_cam=None):
-    # Do vertical operations on a image
-    height,width,colors = img.shape
+
+def verti_op_pic(img, newwidth, mode):
+    """
+    :param img: the original image
+    :param newwidth: the new width expected for the output
+    :param mode: the mode of energy
+    :return: the image after vertical operations
+    """
+
+    height, width, colors = img.shape
     verti_seams = abs(width - newwidth)
+    smap = None
     if width >= newwidth:
         if mode == 3:
             smap = compute_saliency_map(img)
@@ -172,12 +252,12 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
             enrg = compute_energy_function_by_con(img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
-                smap = compute_saliency_map(img) #recompute or not
+                smap = compute_saliency_map(img)  # recompute or not
                 enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, img, enrg)
             img = delete_seam(seam, img)
             if mode == 3:
-                smap = delete_map_seam(seam,smap)
+                smap = delete_map_seam(seam, smap)
     else:
         tmp_img = np.copy(img)
         seam_stack = []
@@ -187,19 +267,19 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
             enrg = compute_energy_function_by_con(tmp_img, mode)
             enrg = enrg / (np.max(enrg) - np.min(enrg)) * 255
             if mode == 3:
-                smap = compute_saliency_map(tmp_img) #recompute or not
+                smap = compute_saliency_map(tmp_img)  # recompute or not
                 enrg += CAM_WEIGHT * smap
             seam = get_vertical_seam(mode, tmp_img, enrg)
             tmp_img = delete_seam(seam, tmp_img)
             if mode == 3:
-                smap = delete_map_seam(seam,smap)
+                smap = delete_map_seam(seam, smap)
 
             # reset the position of current seam
             if i > 0:
                 pre_seam = seam_stack[-1]
-                for i, j in enumerate(seam):
-                    if j > pre_seam[i]:
-                        seam[i] += 1
+                for k, j in enumerate(seam):
+                    if j > pre_seam[k]:
+                        seam[k] += 1
             seam_stack.append(seam)
 
         seam_mat = np.array(seam_stack)
@@ -209,17 +289,33 @@ def verti_op_pic(img,newwidth,mode,grad_cam=None):
 
     return img
 
-def hori_op_pic(img,newheight,mode,grad_cam=None):
+
+def hori_op_pic(img, newheight, mode):
+    """
+    :param img: the original image
+    :param newheight: the new height expected for the output
+    :param mode: the mode of energy
+    :return: the image after horizontal operations
+    """
+
     # Do horizontal operations on a image
-    img = np.array(img,dtype = np.double)
-    img = img.transpose((1,0,2))
-    img = verti_op_pic(img, newheight, mode, grad_cam)
-    img = img.transpose((1,0,2))
+    img = np.array(img, dtype=np.double)
+    img = img.transpose((1, 0, 2))
+    img = verti_op_pic(img, newheight, mode)
+    img = img.transpose((1, 0, 2))
     return img
 
+
 def visualize_energy_map(imgarr, filepath, mode=0, opt=True):
-    # Visualize the energy map
-    if opt == True:
+    """
+    :param imgarr: the original image
+    :param filepath: the file path where the energy map will be
+    :param mode: the mode of energy
+    :param opt: whether using optimization
+    :return: none
+    """
+
+    if opt:
         enrg = compute_energy_function_with_abs(imgarr, mode)
     else:
         enrg = compute_energy_function_by_con(imgarr, mode)
@@ -232,8 +328,17 @@ def visualize_energy_map(imgarr, filepath, mode=0, opt=True):
     enrg_heatmap = cv.applyColorMap(enrg, cv.COLORMAP_JET)
     cv.imwrite(filepath, enrg_heatmap)
 
-def delete_seam_with_opt(mode,seam,imgarr,enrg):
-    # Delete or add a seam and update the energy map instead of computing the whole energy map every time
+
+def delete_seam_with_opt(mode, seam, imgarr, enrg):
+    """
+    :param mode: the mode of energy
+    :param seam: a seam on the image
+    :param imgarr: the original image
+    :param enrg: the energy map of the image
+    :return: the image after deleting the seam and the updated energy map
+    """
+
+    # Optimization: Delete a seam and update the energy map instead of computing the whole energy map every time
     height, width, colors = imgarr.shape
     img = np.zeros((height, width - 1, colors), dtype=np.int64)
     newenrg = np.zeros((height, width - 1), dtype=np.double)
@@ -264,9 +369,16 @@ def delete_seam_with_opt(mode,seam,imgarr,enrg):
     return img, newenrg
 
 
-def verti_op_pic_with_opt(img,newwidth,mode):
-    # Revised verti_op_pic function for the optimization
-    height,width,colors = img.shape
+def verti_op_pic_with_opt(img, newwidth, mode):
+    """
+    :param img: the original image
+    :param newwidth: the expected width of the output
+    :param mode: the mode of energy
+    :return:
+    """
+
+    # Optimization: Delete a seam and update the energy map instead of computing the whole energy map every time
+    height, width, colors = img.shape
     verti_seams = abs(width - newwidth)
     if width >= newwidth:
         enrg = compute_energy_function_with_abs(img, mode)
@@ -283,9 +395,9 @@ def verti_op_pic_with_opt(img,newwidth,mode):
             # reset the position of current seam
             if i > 0:
                 pre_seam = seam_stack[-1]
-                for i, j in enumerate(seam):
-                    if j >= pre_seam[i]:
-                        seam[i] += 1
+                for k, j in enumerate(seam):
+                    if j >= pre_seam[k]:
+                        seam[k] += 1
             seam_stack.append(seam)
         # add to the image
         seam_mat = np.array(seam_stack)
@@ -296,16 +408,28 @@ def verti_op_pic_with_opt(img,newwidth,mode):
     return img
 
 
-def hori_op_pic_with_opt(img,newheight,mode):
+def hori_op_pic_with_opt(img, newheight, mode):
+    """
+    :param img: the original image
+    :param newheight: the new height expected of the output
+    :param mode: the mode of energy
+    :return: the image after horizontal operations with optimization
+    """
+
     # Revised hori_op_pic function for the optimization
-    img = np.array(img,dtype = np.double)
-    img = img.transpose((1,0,2))
+    img = np.array(img, dtype=np.double)
+    img = img.transpose((1, 0, 2))
     img = verti_op_pic_with_opt(img, newheight, mode)
-    img = img.transpose((1,0,2))
+    img = img.transpose((1, 0, 2))
     return img
 
+
 def compute_saliency_map(imgarr):
-    # Given an image, return the guided grad-CAM energy for mode 3
+    """
+    :param imgarr: the original image
+    :return: the guided grad-CAM energy map
+    """
+
     prep_img = preprocess_image(imgarr)
     cam, target_class = grad_cam.generate_cam(prep_img)
     guided_grads = guided_backprop.generate_gradients(prep_img, target_class)
@@ -315,8 +439,14 @@ def compute_saliency_map(imgarr):
     cam_gb = cv2.resize(cam_gb.reshape(224, 224), (imgarr.shape[1], imgarr.shape[0]))
     return cam_gb
 
+
 def compute_energy_function_by_con(imgarr, mode=0):
-    # Return energy computed by convolutional operations over whole img
+    """
+    :param imgarr: the original image
+    :param mode: the mode of energy
+    :return: the energy map computed by laplace operator
+    """
+
     imgarr = imgarr.astype(float)
     height, width, channels = imgarr.shape
 
@@ -328,7 +458,7 @@ def compute_energy_function_by_con(imgarr, mode=0):
 
     enrg[0][0] = enrg[0][0] * 8 / 3
     enrg[0][width-1] = enrg[0][width-1] * 8 / 3
-    enrg[height-1][0] =enrg[height-1][0] * 8 / 3
+    enrg[height-1][0] = enrg[height-1][0] * 8 / 3
     enrg[height-1][width-1] = enrg[height-1][width-1] * 8 / 3
     for i in range(1, height):
         enrg[i][0] = enrg[i][0] * 8 / 5
